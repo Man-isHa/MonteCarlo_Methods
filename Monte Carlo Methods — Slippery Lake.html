@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monte Carlo Methods — Slippery Lake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Literata:opsz,wght@7..72,500;7..72,600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#f3f7fa; --fg:#0f2236; --muted:#5d7083; --line:#cfdbe5; --card:#ffffff;
+  --accent:#1f6fb2; --agent:#e4572e;
+  --ice:#dceaf3; --ice-b:#bcd2e2; --hole:#0e3550; --hole-fg:#9fc0dc; --goal:#f2c14e; --goal-fg:#3a2a00;
+  --good:28,140,96; --bad:205,60,60; --errc:228,120,40;
+  --c1:#1f6fb2; --c2:#e4572e; --c3:#2f9e6e;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1824; --fg:#e7eff6; --muted:#8ea4b8; --line:#22384c; --card:#12222f;
+    --accent:#6fb1ec; --agent:#ff7a52;
+    --ice:#17303f; --ice-b:#24455a; --hole:#020a12; --hole-fg:#5f86a8; --goal:#d9a72d; --goal-fg:#1c1400;
+    --good:70,200,140; --bad:240,95,95; --errc:250,150,60;
+    --c1:#6fb1ec; --c2:#ff7a52; --c3:#58cf98;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c1824; --fg:#e7eff6; --muted:#8ea4b8; --line:#22384c; --card:#12222f;
+  --accent:#6fb1ec; --agent:#ff7a52;
+  --ice:#17303f; --ice-b:#24455a; --hole:#020a12; --hole-fg:#5f86a8; --goal:#d9a72d; --goal-fg:#1c1400;
+  --good:70,200,140; --bad:240,95,95; --errc:250,150,60;
+  --c1:#6fb1ec; --c2:#ff7a52; --c3:#58cf98;
+}
+*{box-sizing:border-box}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:'Public Sans',system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden}
+#vp{position:relative;width:100%;height:100%;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1600px;height:900px;transform-origin:center center}
+.slide{position:absolute;inset:0;padding:52px 80px 96px;display:none;flex-direction:column}
+.slide.active{display:flex}
+h1{font-family:'Literata',Georgia,serif;font-weight:600;font-size:112px;line-height:1.02;margin:0;letter-spacing:-0.02em}
+h2{font-family:'Literata',Georgia,serif;font-weight:600;font-size:56px;line-height:1.1;margin:0 0 30px;letter-spacing:-0.01em}
+.tag{font:500 22px 'Public Sans',sans-serif;color:var(--accent);border:2px solid currentColor;border-radius:999px;padding:3px 16px;vertical-align:middle;margin-left:18px;letter-spacing:0}
+.row{display:flex;gap:60px;flex:1;min-height:0}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.grow{flex:1}
+.txt{font-size:30px;line-height:1.4;margin:0}
+.sm{font-size:24px;line-height:1.4;margin:0}
+.xs{font-size:19px;line-height:1.4;margin:0;color:var(--muted)}
+.muted{color:var(--muted)}
+.eq{font-size:34px;line-height:1.2}
+.eq mjx-container[display="true"]{margin:6px 0 !important}
+.key{font-size:30px;line-height:1.35;border-left:6px solid var(--accent);padding-left:20px}
+.ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.btn{font:500 22px 'Public Sans',sans-serif;padding:9px 20px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;min-width:52px}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.on{border-color:var(--agent);box-shadow:inset 0 0 0 2px var(--agent)}
+/* lake grid */
+.grid{display:grid;grid-template-columns:repeat(5,var(--cs));grid-auto-rows:var(--cs);gap:5px}
+.cell{position:relative;border-radius:10px;background-color:var(--ice);box-shadow:inset 0 0 0 1px var(--ice-b);display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'JetBrains Mono',ui-monospace,monospace;overflow:hidden;color:var(--fg)}
+.cell.hole{background-color:var(--hole);box-shadow:none;color:var(--hole-fg)}
+.cell.goal{background-color:var(--goal);box-shadow:none;color:var(--goal-fg)}
+.cell.trail{box-shadow:inset 0 0 0 3px var(--accent)}
+.cell.sel{box-shadow:inset 0 0 0 5px var(--agent)}
+.cell.click{cursor:pointer}
+.cell .ix{position:absolute;top:4px;left:8px;font-size:calc(var(--cs)*.15);color:var(--muted)}
+.cell.hole .ix,.cell.goal .ix{color:inherit;opacity:.75}
+.cell .st{position:absolute;top:4px;right:8px;font-size:calc(var(--cs)*.14);color:var(--accent);font-family:'Public Sans',sans-serif;font-weight:600}
+.cell .arw{font-size:calc(var(--cs)*.38);line-height:1;font-family:'Public Sans',sans-serif}
+.cell .val{font-size:calc(var(--cs)*.2);font-weight:600;line-height:1.3}
+.cell .val.q{color:var(--muted);font-size:calc(var(--cs)*.3)}
+.cell .cnt{position:absolute;bottom:3px;right:7px;font-size:calc(var(--cs)*.14);color:var(--muted)}
+.cell .big{font-size:calc(var(--cs)*.36);font-weight:600;font-family:'Literata',serif}
+.cell .rw{position:absolute;bottom:4px;font-size:calc(var(--cs)*.15);opacity:.85}
+.cell .prob{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(31,111,178,.88);color:#fff;font-size:calc(var(--cs)*.26);font-weight:600}
+.cell .agent{position:absolute;inset:16%;border-radius:50%;border:5px solid var(--agent);background:rgba(228,87,46,.12)}
+/* tables */
+table.tt{border-collapse:collapse;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:20px}
+table.tt th,table.tt td{padding:7px 6px;text-align:center;border-bottom:1px solid var(--line);min-width:58px;white-space:nowrap}
+table.tt th{font-family:'Public Sans',sans-serif;font-weight:500;color:var(--muted);font-size:22px}
+table.tt th.rh{text-align:left;padding-right:16px;font-size:24px}
+table.tt tr.tr-t td{color:var(--muted);font-size:18px}
+table.tt td.hl{color:var(--accent);font-weight:600}
+table.tt td.ok{color:rgb(var(--good));font-weight:600}
+table.tt td.rep{color:var(--muted)}
+table.tt td.hl2{color:var(--agent);font-weight:600}
+table.tt tr.skip td{color:var(--muted);font-style:italic}
+table.tt tr.rpt td{background:rgba(228,87,46,.10)}
+table.tt b.tm{font-family:'Literata',serif}
+.slip{color:var(--agent);font-size:.85em;margin-left:2px}
+.hid{visibility:hidden}
+/* stats */
+.stats{display:grid;grid-template-columns:1fr auto;gap:10px 24px;font-size:24px;align-items:baseline}
+.stats b{font-family:'JetBrains Mono',monospace;font-size:28px;text-align:right}
+.lgd{display:flex;gap:26px;font-size:20px;color:var(--muted);flex-wrap:wrap}
+.lgd i{display:inline-block;width:26px;height:4px;border-radius:2px;vertical-align:middle;margin-right:8px}
+.glab{font-size:22px;color:var(--muted);margin-bottom:8px}
+.road{list-style:none;padding:0;margin:10px 0 0;font-size:28px;line-height:1.7;counter-reset:r}
+.road li{counter-increment:r}
+.road li::before{content:counter(r);display:inline-block;width:38px;height:38px;line-height:38px;border-radius:50%;text-align:center;background:var(--ice);color:var(--accent);font-weight:600;margin-right:16px;font-size:20px;vertical-align:middle}
+/* nav */
+#nav{position:absolute;left:80px;right:80px;bottom:30px;display:flex;align-items:center;gap:18px}
+#bar{flex:1;height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+#barfill{height:100%;background:var(--accent);width:0;transition:width .25s}
+#cnt{font:500 20px 'JetBrains Mono',monospace;color:var(--muted);min-width:80px;text-align:right}
+#nav .btn{padding:4px 16px;font-size:24px}
+@media (prefers-reduced-motion: reduce){#barfill{transition:none}}
+</style>
+</head>
+<body>
+<div id="vp"><div id="stage">
+
+<!-- 1 Title -->
+<section class="slide" id="s-title">
+  <div class="row" style="align-items:center">
+    <div class="col grow" style="gap:26px">
+      <p class="sm muted">Reinforcement learning</p>
+      <h1>Monte Carlo<br>methods</h1>
+      <p class="txt muted">Learning values from experience on a slippery frozen lake</p>
+      <ol class="road">
+        <li>Model known: policy iteration</li>
+        <li>Model hidden: first-visit Monte Carlo</li>
+        <li>Model hidden: every-visit Monte Carlo</li>
+      </ol>
+    </div>
+    <div id="g-title"></div>
+  </div>
+</section>
+
+<!-- 2 Lake -->
+<section class="slide" id="s-lake">
+  <h2>The slippery lake <span class="tag">5 × 5</span></h2>
+  <div class="row">
+    <div class="col">
+      <div id="g-lake"></div>
+      <div class="ctl">
+        <span class="sm muted">Action</span>
+        <button class="btn act" data-do="lakeA:0">←</button>
+        <button class="btn act" data-do="lakeA:1">↓</button>
+        <button class="btn act" data-do="lakeA:2">→</button>
+        <button class="btn act on" data-do="lakeA:3">↑</button>
+        <span class="xs">then click any ice cell</span>
+      </div>
+    </div>
+    <div class="col grow" style="gap:14px">
+      <div class="eq">\[P(s'\mid s,a)=\begin{cases}0.8 & \text{intended direction}\\ 0.1 & \text{each perpendicular direction}\end{cases}\]</div>
+      <p class="sm muted">Sliding into a wall keeps you where you are.</p>
+      <div class="eq">\[R=\begin{cases}+1 & \text{reach } G\\ -1 & \text{fall into } H\\ \phantom{+}0 & \text{otherwise}\end{cases}\qquad \gamma=0.9\]</div>
+      <p class="sm muted">The episode ends in a hole \(H\) or at the goal \(G\).</p>
+      <div id="lake-out" class="eq" style="margin-top:10px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 Policy iteration -->
+<section class="slide" id="s-pi">
+  <h2>Policy iteration <span class="tag">model known</span></h2>
+  <div class="row">
+    <div class="col">
+      <div id="g-pi"></div>
+      <div class="ctl">
+        <button class="btn" data-do="pi:first">⏮</button>
+        <button class="btn" data-do="pi:prev">◀</button>
+        <span id="pi-lab" class="eq" style="min-width:110px;text-align:center"></span>
+        <button class="btn" data-do="pi:next">▶</button>
+        <button class="btn" data-do="pi:last">⏭</button>
+      </div>
+    </div>
+    <div class="col grow" style="gap:12px">
+      <p class="sm muted">1. Policy evaluation</p>
+      <div class="eq">\[V^{\pi}(s)=\sum_{s'}P(s'\mid s,\pi(s))\big[R(s')+\gamma V^{\pi}(s')\big]\]</div>
+      <p class="sm muted">2. Policy improvement</p>
+      <div class="eq">\[\pi'(s)=\arg\max_{a}\sum_{s'}P(s'\mid s,a)\big[R(s')+\gamma V^{\pi}(s')\big]\]</div>
+      <p class="sm muted">3. Repeat until \(\pi'=\pi\)</p>
+      <div id="pi-out" class="key" style="margin-top:14px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 Optimal -->
+<section class="slide" id="s-opt">
+  <h2>Optimal policy and values</h2>
+  <div class="row">
+    <div class="col"><div id="g-opt"></div></div>
+    <div class="col grow" style="gap:22px;justify-content:center">
+      <div class="eq">\[\pi^*(s)\ \text{(arrows)},\qquad V^*(s)\ \text{(numbers)}\]</div>
+      <div id="opt-out" class="txt"></div>
+      <div class="key">Every number here used \(P\) and \(R\).<br>What if we don't know them?</div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 Fresh -->
+<section class="slide" id="s-fresh">
+  <h2>Starting fresh: the model is hidden</h2>
+  <div class="row">
+    <div class="col"><div id="g-fresh"></div><p class="xs">Arrows: a fixed, hand-written policy \(\pi\) (not optimal)</p></div>
+    <div class="col grow" style="gap:12px">
+      <div class="eq">\[P(s'\mid s,a)=\ ?\qquad R=\ ?\]</div>
+      <p class="sm">We can only act and observe:</p>
+      <div class="eq">\[S_0,\ A_0,\ R_1,\ S_1,\ A_1,\ R_2,\ \dots,\ S_T\]</div>
+      <p class="sm">Goal: evaluate the policy \(\pi\)</p>
+      <div class="eq">\[V^{\pi}(s)=\mathbb{E}_{\pi}\big[\,G_t\mid S_t=s\,\big]\]</div>
+      <div class="eq">\[G_t=R_{t+1}+\gamma R_{t+2}+\gamma^{2}R_{t+3}+\cdots\]</div>
+      <div class="key">Monte Carlo: replace the expectation with an average of returns we actually observe.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 Episode 1 -->
+<section class="slide" id="s-ep1">
+  <h2>Episode 1: follow \(\pi\) and record</h2>
+  <div class="row">
+    <div class="col">
+      <div id="g-ep1"></div>
+      <div class="ctl"><button class="btn" data-do="replay">Replay</button><button class="btn pri" data-do="newep:fv1">New episode</button></div>
+    </div>
+    <div class="col grow" style="gap:22px">
+      <p class="sm">At each step take \(A_t=\pi(S_t)\); the ice decides where you land.</p>
+      <div id="tb-ep1" style="overflow-x:auto;max-width:100%"></div>
+      <div id="out-ep1" class="key"></div>
+      <p class="xs">Small orange arrow = the direction you actually slid. Demo episodes are sampled until one revisits a state.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 Estimates -->
+<section class="slide" id="s-est">
+  <h2>Empirical estimates from episode 1 <span class="tag">first visit</span></h2>
+  <div class="row">
+    <div class="col"><div id="g-est"></div></div>
+    <div class="col grow" style="gap:14px">
+      <div class="eq">\[G_t=R_{t+1}+\gamma\,G_{t+1},\qquad G_T=0\]</div>
+      <div id="w-est" class="eq"></div>
+      <div id="tb-est" style="overflow-x:auto;max-width:100%"></div>
+      <div class="eq">\[V(s)=G_t\ \ \text{at the first } t \text{ with } S_t=s,\qquad N(s)=1\]</div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 Episode 2 -->
+<section class="slide" id="s-ep2">
+  <h2>Episode 2: same policy \(\pi\)</h2>
+  <div class="row">
+    <div class="col">
+      <div id="g-ep2"></div>
+      <div class="ctl"><button class="btn" data-do="replay">Replay</button><button class="btn pri" data-do="newep:fv2">New episode</button></div>
+    </div>
+    <div class="col grow" style="gap:22px">
+      <p class="sm">A new run from the start. Same \(\pi\), different luck on the ice.</p>
+      <div id="tb-ep2" style="overflow-x:auto;max-width:100%"></div>
+      <div id="out-ep2" class="key"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 FV update -->
+<section class="slide" id="s-upd">
+  <h2>First-visit Monte Carlo update</h2>
+  <div class="row">
+    <div class="col"><div id="g-upd"></div><p class="xs">Values after episodes 1 and 2</p></div>
+    <div class="col grow" style="gap:14px">
+      <div class="eq">\[N(s)\leftarrow N(s)+1,\qquad V(s)\leftarrow V(s)+\frac{1}{N(s)}\big(G_t-V(s)\big)\]</div>
+      <p class="sm muted">only at the first \(t\) in the episode with \(S_t=s\)</p>
+      <div id="tb-upd" style="overflow-x:auto;max-width:100%"></div>
+      <div id="w-upd" class="eq"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 Many -->
+<section class="slide" id="s-many">
+  <h2>Repeat for many episodes</h2>
+  <div class="row">
+    <div class="col"><div id="g-many"></div></div>
+    <div class="col grow" style="gap:16px">
+      <div class="ctl">
+        <button class="btn pri" data-do="addfv:1">+1</button>
+        <button class="btn pri" data-do="addfv:10">+10</button>
+        <button class="btn pri" data-do="addfv:100">+100</button>
+        <button class="btn pri" data-do="addfv:1000">+1000</button>
+        <button class="btn" data-do="resetfv">Back to 2</button>
+        <span class="txt" style="margin-left:14px">Episodes: <b id="n-many" style="font-family:'JetBrains Mono',monospace"></b></span>
+      </div>
+      <canvas id="c-many"></canvas>
+      <div id="l-many" class="lgd"></div>
+      <p class="sm muted">Each estimate is a running average of first-visit returns; the curves settle as \(N(s)\) grows.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 FV compare -->
+<section class="slide" id="s-cmp">
+  <h2>How close are we to the true \(V^{\pi}\)? <span class="tag">first visit</span></h2>
+  <div class="row" style="gap:40px">
+    <div class="col" style="gap:18px">
+      <div style="display:flex;gap:28px">
+        <div><div class="glab">True \(V^{\pi}\)</div><div id="gt-fv"></div></div>
+        <div><div class="glab">Estimate \(V\)</div><div id="ge-fv"></div></div>
+        <div><div class="glab">Error \(|V-V^{\pi}|\)</div><div id="gx-fv"></div></div>
+      </div>
+      <canvas id="c-fv"></canvas>
+    </div>
+    <div class="col grow" style="gap:18px">
+      <div class="eq" style="font-size:30px">\[\text{RMSE}=\sqrt{\operatorname*{mean}_{s\ \text{seen}}\big(V(s)-V^{\pi}(s)\big)^2}\]</div>
+      <div id="st-fv" class="stats"></div>
+      <div class="ctl"><button class="btn pri" data-do="addfv:100">+100</button><button class="btn pri" data-do="addfv:1000">+1000</button><button class="btn" data-do="resetfv">Back to 2</button></div>
+      <p class="xs">\(V^{\pi}\) is computed with the hidden model, only to grade the estimate. Chart: RMSE vs episodes (log scale).</p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 EV episode 1 -->
+<section class="slide" id="s-ev1">
+  <h2>Start afresh: every-visit Monte Carlo</h2>
+  <div class="row">
+    <div class="col">
+      <div id="g-ev1"></div>
+      <div class="ctl"><button class="btn" data-do="replay">Replay</button><button class="btn pri" data-do="newep:ev1">New episode</button></div>
+    </div>
+    <div class="col grow" style="gap:16px">
+      <p class="sm">Reset \(V(s)=0,\ N(s)=0\). Same \(\pi\). This time every visit to \(s\) counts.</p>
+      <div id="tb-ev1" style="overflow-x:auto;max-width:100%"></div>
+      <div class="eq">\[V(s)=\frac{1}{N(s)}\sum_{t\,:\,S_t=s}G_t\]</div>
+      <div id="w-ev1" class="eq"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 EV episode 2 + update -->
+<section class="slide" id="s-ev2">
+  <h2>Episode 2 and the every-visit update</h2>
+  <div class="row">
+    <div class="col">
+      <div id="g-ev2"></div>
+      <div class="ctl"><button class="btn" data-do="replay">Replay</button><button class="btn pri" data-do="newep:ev2">New episode</button></div>
+    </div>
+    <div class="col grow" style="gap:14px">
+      <div class="eq">\[V(s)\leftarrow V(s)+\frac{1}{N(s)}\big(G_t-V(s)\big)\quad\text{for every } t \text{ with } S_t=s\]</div>
+      <div id="tb-ev2" style="overflow-x:auto;max-width:100%"></div>
+      <div id="out-ev2" class="key"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 EV compare -->
+<section class="slide" id="s-evcmp">
+  <h2>Repeat and compare with \(V^{\pi}\) <span class="tag">every visit</span></h2>
+  <div class="row" style="gap:40px">
+    <div class="col" style="gap:18px">
+      <div style="display:flex;gap:28px">
+        <div><div class="glab">True \(V^{\pi}\)</div><div id="gt-ev"></div></div>
+        <div><div class="glab">Estimate \(V\)</div><div id="ge-ev"></div></div>
+        <div><div class="glab">Error \(|V-V^{\pi}|\)</div><div id="gx-ev"></div></div>
+      </div>
+      <canvas id="c-ev"></canvas>
+    </div>
+    <div class="col grow" style="gap:18px">
+      <div id="st-ev" class="stats"></div>
+      <div class="ctl"><button class="btn pri" data-do="addev:10">+10</button><button class="btn pri" data-do="addev:100">+100</button><button class="btn pri" data-do="addev:1000">+1000</button><button class="btn" data-do="resetev">Back to 2</button></div>
+      <p class="xs">Same estimate as before, but each episode can add several returns per state. Chart: RMSE vs episodes (log scale).</p>
+    </div>
+  </div>
+</section>
+
+<!-- 15 Head to head -->
+<section class="slide" id="s-h2h">
+  <h2>First visit vs every visit, same episodes</h2>
+  <div class="row">
+    <div class="col">
+      <canvas id="c-h2h"></canvas>
+      <div id="l-h2h" class="lgd"></div>
+    </div>
+    <div class="col grow" style="gap:22px">
+      <div id="st-h2h" class="stats"></div>
+      <div class="ctl"><button class="btn pri" data-do="h2h">Run 2,000 new episodes</button></div>
+      <p class="sm">Both learn \(V^{\pi}\) from samples alone: no \(P\), no \(R\).</p>
+      <p class="sm">First visit: one return per state per episode, unbiased.</p>
+      <p class="sm">Every visit: more returns per episode, slightly biased, still converges to \(V^{\pi}\).</p>
+    </div>
+  </div>
+</section>
+
+<div id="nav">
+  <div id="bar"><div id="barfill"></div></div>
+  <span id="cnt"></span>
+  <button class="btn" id="prev" aria-label="Previous slide">‹</button>
+  <button class="btn" id="next" aria-label="Next slide">›</button>
+</div>
+
+</div></div>
+
+<script>
+let MJ_READY=false;
+window.MathJax={
+  tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
+  svg:{fontCache:'global',displayAlign:'left'},
+  startup:{pageReady(){return MathJax.startup.defaultPageReady().then(()=>{MJ_READY=true;flushTypeset();});}}
+};
+</script>
+<script>
+/* ---------- MDP ---------- */
+const $=q=>document.querySelector(q);
+const GAM=0.9, MAP=["SFFFF","FHFHF","FFFHF","HFFFF","FHFFG"];
+const DR=[[0,-1],[1,0],[0,1],[-1,0]], ARW=['←','↓','→','↑'];
+const ATEX=['\\leftarrow','\\downarrow','\\rightarrow','\\uparrow'];
+const typ=s=>MAP[Math.floor(s/5)][s%5];
+const isTerm=s=>typ(s)==='H'||typ(s)==='G';
+const NONTERM=[...Array(25).keys()].filter(s=>!isTerm(s)).length;
+function mv(s,d){const r=Math.floor(s/5)+DR[d][0],c=s%5+DR[d][1];return (r<0||r>4||c<0||c>4)?s:r*5+c;}
+const rew=s2=>typ(s2)==='G'?1:typ(s2)==='H'?-1:0;
+function outcomes(s,a){return [[0.8,a],[0.1,(a+1)%4],[0.1,(a+3)%4]].map(([p,d])=>({p,d,s2:mv(s,d)}));}
+function trans(s,a){const m=new Map();for(const o of outcomes(s,a))m.set(o.s2,(m.get(o.s2)||0)+o.p);return [...m].map(([s2,p])=>({s2,p,r:rew(s2)}));}
+function qv(V,s,a){let q=0;for(const t of trans(s,a))q+=t.p*(t.r+GAM*V[t.s2]);return q;}
+function evaluate(pi){const V=new Array(25).fill(0);for(let it=0;it<5000;it++){let d=0;for(let s=0;s<25;s++){if(isTerm(s))continue;const v=qv(V,s,pi[s]);d=Math.max(d,Math.abs(v-V[s]));V[s]=v;}if(d<1e-12)break;}return V;}
+function policyIteration(){
+  let pi=Array.from({length:25},(_,s)=>isTerm(s)?-1:0);const H=[];
+  for(let k=0;k<100;k++){
+    const V=evaluate(pi);
+    const np=pi.map((a,s)=>{if(a<0)return a;let b=a,bq=qv(V,s,a);for(let x=0;x<4;x++){const q=qv(V,s,x);if(q>bq+1e-10){bq=q;b=x;}}return b;});
+    const changed=np.filter((a,s)=>a!==pi[s]).length;
+    H.push({pi:pi.slice(),V,changed});
+    if(!changed)break;pi=np;
+  }
+  return H;
+}
+const PIH=policyIteration(), OPT=PIH[PIH.length-1];
+const PI=[..."RRRRDDHDHDRRDHDHRRRDLHRRG"].map(ch=>'LDRU'.indexOf(ch));
+const VPI=evaluate(PI);
+
+/* ---------- sampling ---------- */
+function mulberry32(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rand=mulberry32(2026);
+function genEpisode(pi){
+  const ep=[];let s=0;
+  for(let t=0;t<100&&!isTerm(s);t++){
+    const a=pi[s],os=outcomes(s,a),u=rand();let o=os[2],acc=0;
+    for(const x of os){acc+=x.p;if(u<acc){o=x;break;}}
+    ep.push({s,a,d:o.d,r:rew(o.s2),s2:o.s2});s=o.s2;
+  }
+  return ep;
+}
+function returnsOf(ep){const G=new Array(ep.length);let g=0;for(let t=ep.length-1;t>=0;t--){g=ep[t].r+GAM*g;G[t]=g;}return G;}
+const hasRevisit=ep=>new Set(ep.map(x=>x.s)).size<ep.length;
+function pick(pred){let ep;for(let i=0;i<4000;i++){ep=genEpisode(PI);if(pred(ep))return ep;}return ep;}
+const PICK={
+  fv1:()=>pick(e=>hasRevisit(e)&&e.length>=5&&e.length<=10),
+  fv2:()=>pick(e=>e.length>=4&&e.length<=9),
+  ev1:()=>pick(e=>hasRevisit(e)&&e.length>=5&&e.length<=10),
+  ev2:()=>pick(e=>hasRevisit(e)&&e.length>=4&&e.length<=9)
+};
+const EP={fv1:PICK.fv1(),fv2:PICK.fv2(),ev1:PICK.ev1(),ev2:PICK.ev2()};
+
+/* ---------- Monte Carlo estimator ---------- */
+function rmse(V,N){let q=0,c=0;for(let s=0;s<25;s++){if(isTerm(s)||!N[s])continue;q+=(V[s]-VPI[s])**2;c++;}return c?Math.sqrt(q/c):0;}
+class MC{
+  constructor(mode){this.mode=mode;this.reset();}
+  reset(){this.V=new Array(25).fill(0);this.N=new Array(25).fill(0);this.n=0;this.hist=[];this.err=[];}
+  update(ep){
+    const G=returnsOf(ep),log=[],seen=new Set();
+    ep.forEach((st,t)=>{
+      const s=st.s;
+      if(this.mode==='first'&&seen.has(s)){log.push({t,s,G:G[t],skip:true});return;}
+      seen.add(s);const oV=this.V[s],oN=this.N[s];
+      this.N[s]++;this.V[s]+=(G[t]-this.V[s])/this.N[s];
+      log.push({t,s,G:G[t],oV,oN,nV:this.V[s],nN:this.N[s]});
+    });
+    this.n++;this.hist.push(this.V.slice());this.err.push(rmse(this.V,this.N));
+    return log;
+  }
+}
+const fv=new MC('first'), ev=new MC('every');
+let fvKey=0,fvBuilt=-1,evKey=0,evBuilt=-1;
+function ensureFV(){if(fvBuilt!==fvKey){fv.reset();fv.update(EP.fv1);fv.update(EP.fv2);fvBuilt=fvKey;}}
+function ensureEV(){if(evBuilt!==evKey){ev.reset();ev.update(EP.ev1);ev.update(EP.ev2);evBuilt=evKey;}}
+function runEpisodes(mc,k){for(let i=0;i<k;i++)mc.update(genEpisode(PI));}
+
+/* ---------- formatting ---------- */
+const f=(v,d=3)=>{if(Math.abs(v)<0.5*10**-d)v=0;return (v<0?'−':'')+Math.abs(v).toFixed(d);};
+const ft=(v,d=3)=>{if(Math.abs(v)<0.5*10**-d)v=0;return v.toFixed(d);};
+const tp=v=>v<0?`(${ft(v)})`:ft(v);
+const sH=s=>`s<sub>${s}</sub>`;
+const rH=r=>r>0?'+1':r<0?'−1':'0';
+
+/* ---------- MathJax queue ---------- */
+const pend=new Set();let mq=Promise.resolve();
+function typeset(el){
+  if(!el)return;
+  if(!MJ_READY){pend.add(el);return;}
+  mq=mq.then(()=>{MathJax.typesetClear([el]);return MathJax.typesetPromise([el]);}).catch(e=>console.warn(e));
+}
+function flushTypeset(){const a=[...pend];pend.clear();a.forEach(typeset);}
+
+/* ---------- grid ---------- */
+function tint(v,mode){
+  let rgb,a;
+  if(mode==='err'){rgb='var(--errc)';a=Math.min(1,Math.abs(v)/0.25)*0.6;}
+  else{rgb=v>=0?'var(--good)':'var(--bad)';a=Math.min(1,Math.abs(v))*0.55;}
+  const c=`rgba(${rgb},${a.toFixed(3)})`;
+  return `background-image:linear-gradient(${c},${c})`;
+}
+function gridHTML(o={}){
+  const cs=o.cell||96,dec=o.dec??3;
+  let h=`<div class="grid" style="--cs:${cs}px">`;
+  for(let s=0;s<25;s++){
+    const t=typ(s),term=isTerm(s);
+    let cls='cell '+(t==='H'?'hole':t==='G'?'goal':'ice');
+    const vis=o.values&&!term&&(!o.counts||o.counts[s]>0);
+    const style=vis?tint(o.values[s],o.mode):'';
+    if(o.trail&&o.trail.has(s))cls+=' trail';
+    if(o.sel===s)cls+=' sel';
+    if(o.click&&!term)cls+=' click';
+    h+=`<div class="${cls}" data-s="${s}" style="${style}">`;
+    if(o.idx!==false)h+=`<span class="ix">${sH(s)}</span>`;
+    if(t==='S'&&o.start!==false)h+=`<span class="st">start</span>`;
+    if(term)h+=`<span class="big">${t}</span><span class="rw">${t==='G'?'+1':'−1'}</span>`;
+    else{
+      if(o.policy&&o.policy[s]>=0)h+=`<span class="arw">${ARW[o.policy[s]]}</span>`;
+      if(o.q)h+=`<span class="val q">?</span>`;
+      else if(o.values)h+=`<span class="val"${o.vbig?' style="font-size:calc(var(--cs)*.26)"':''}>${vis?f(o.values[s],dec):'—'}</span>`;
+      if(o.counts&&o.nlabel!==false)h+=`<span class="cnt">N=${o.counts[s]}</span>`;
+    }
+    if(o.probs&&o.probs[s]!=null)h+=`<span class="prob">${o.probs[s]}</span>`;
+    if(o.agent===s)h+=`<span class="agent"></span>`;
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+
+/* ---------- trajectory tables & animation ---------- */
+function trajTable(ep,keys){
+  const T=ep.length,G=returnsOf(ep),first={},cnt={};
+  ep.forEach((x,t)=>{if(!(x.s in first))first[x.s]=t;});
+  const vis=ep.map(x=>(cnt[x.s]=(cnt[x.s]||0)+1));
+  const lab={t:'\\(t\\)',s:'\\(S_t\\)',a:'\\(A_t\\)',r:'\\(R_{t+1}\\)',g:'\\(G_t\\)',first:'first?',visit:'visit #'};
+  let h='<table class="tt">';
+  for(const k of keys){
+    h+=`<tr class="tr-${k}"><th class="rh">${lab[k]}</th>`;
+    for(let t=0;t<=T;t++){
+      let c='',cl='';
+      if(k==='t')c=t;
+      else if(k==='s'){const s=t<T?ep[t].s:ep[T-1].s2;c=sH(s)+(t===T?` <b class="tm">${typ(s)}</b>`:'');}
+      else if(t<T){
+        const x=ep[t];
+        if(k==='a')c=ARW[x.a]+(x.d!==x.a?`<span class="slip">${ARW[x.d]}</span>`:'');
+        if(k==='r'){c=rH(x.r);if(x.r)cl='hl';}
+        if(k==='g')c=f(G[t]);
+        if(k==='first'){const ok=first[x.s]===t;c=ok?'✓':'×';cl=ok?'ok':'rep';}
+        if(k==='visit'){c=vis[t];cl=vis[t]>1?'hl2':'';}
+      }
+      h+=`<td data-t="${t}" data-k="${k}" class="${cl}">${c}</td>`;
+    }
+    h+='</tr>';
+  }
+  return h+'</table>';
+}
+function reveal(root,i,done){
+  root.querySelectorAll('[data-t]').forEach(el=>{
+    const t=+el.dataset.t,k=el.dataset.k;let v;
+    if(k==='t'||k==='s')v=t<=i;
+    else if(k==='a'||k==='r'||k==='row')v=t<i;
+    else v=done;
+    el.classList.toggle('hid',!v);
+  });
+}
+let tok=0;
+function play({ep,gridEl,gopt,tbl,onDone,ms=480}){
+  const my=++tok;let i=0;
+  const draw=()=>{
+    const tr=new Set([0]);for(let k=0;k<i;k++)tr.add(ep[k].s2);
+    gridEl.innerHTML=gridHTML({...gopt,trail:tr,agent:i===0?0:ep[i-1].s2});
+    if(tbl)reveal(tbl,i,false);
+  };
+  draw();
+  const tick=()=>{if(my!==tok)return;if(i>=ep.length){onDone&&onDone();return;}i++;draw();setTimeout(tick,ms);};
+  setTimeout(tick,ms);
+}
+function endText(ep){const z=ep[ep.length-1].s2;return `Episode ended ${typ(z)==='G'?'at the goal \\(G\\) with reward +1':'in a hole \\(H\\) with reward −1'} after \\(T=${ep.length}\\) steps.`;}
+
+/* ---------- chart ---------- */
+function niceStep(x){const p=10**Math.floor(Math.log10(Math.max(x,1e-9)));const m=x/p;return (m<1.5?1:m<3.5?2:m<7.5?5:10)*p;}
+function drawChart(cv,o){
+  const {w,h,series,logx=false}=o,dpr=Math.max(2,window.devicePixelRatio||1);
+  cv.width=w*dpr;cv.height=h*dpr;cv.style.width=w+'px';cv.style.height=h+'px';
+  const c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,w,h);
+  const cs=getComputedStyle(document.documentElement),V=n=>cs.getPropertyValue(n).trim();
+  const L=72,R=18,T=12,B=50,pw=w-L-R,ph=h-T-B;
+  const n=Math.max(2,...series.filter(s=>s.data).map(s=>s.data.length));
+  let lo=Infinity,hi=-Infinity;
+  series.forEach(s=>(s.data||[s.h]).forEach(v=>{if(v<lo)lo=v;if(v>hi)hi=v;}));
+  if(!isFinite(lo)){lo=0;hi=1;}
+  if(hi-lo<1e-6){hi+=0.5;lo-=0.5;}
+  const pad=(hi-lo)*0.07;lo=o.ymin!=null?o.ymin:lo-pad;hi=o.ymax!=null?o.ymax:hi+pad;
+  const X=i=>logx?L+pw*Math.log(i)/Math.log(n):L+pw*(i-1)/(n-1);
+  const Y=v=>T+ph*(1-(v-lo)/(hi-lo));
+  c.font="15px 'JetBrains Mono', ui-monospace, monospace";c.lineWidth=1;
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v);c.strokeStyle=V('--line');c.beginPath();c.moveTo(L,y);c.lineTo(L+pw,y);c.stroke();c.fillStyle=V('--muted');c.textAlign='right';c.textBaseline='middle';c.fillText(v.toFixed(2),L-10,y);}
+  let ticks=[];
+  if(logx){for(let p=1;p<=n;p*=10)ticks.push(p);}else{const st=niceStep(n/5);ticks.push(1);for(let v=st;v<=n;v+=st)ticks.push(v);}
+  c.textAlign='center';c.textBaseline='top';c.fillStyle=V('--muted');
+  ticks.forEach(v=>{const x=X(v);c.strokeStyle=V('--line');c.beginPath();c.moveTo(x,T+ph);c.lineTo(x,T+ph+6);c.stroke();c.fillText(String(v),x,T+ph+9);});
+  c.font="16px 'Public Sans', system-ui, sans-serif";c.fillText(o.xlab||'episodes',L+pw/2,T+ph+30);
+  series.forEach(s=>{
+    c.strokeStyle=V(s.color);c.lineWidth=s.h!=null?2:2.5;c.setLineDash(s.h!=null?[8,6]:[]);c.beginPath();
+    if(s.h!=null){c.moveTo(L,Y(s.h));c.lineTo(L+pw,Y(s.h));}
+    else{const d=s.data;if(!d.length)return;const step=Math.max(1,Math.floor(d.length/1500));
+      for(let i=0;i<d.length;i+=step){const x=X(i+1),y=Y(d[i]);i?c.lineTo(x,y):c.moveTo(x,y);}
+      c.lineTo(X(d.length),Y(d[d.length-1]));}
+    c.stroke();
+  });
+  c.setLineDash([]);
+}
+const legend=items=>items.map(([col,lab])=>`<span><i style="background:var(${col})"></i>${lab}</span>`).join('');
+const stat=(k,v)=>`<span>${k}</span><b>${v}</b>`;
+
+/* ---------- slides ---------- */
+const S={};
+S['s-title']=()=>{$('#g-title').innerHTML=gridHTML({cell:100,idx:false});};
+
+const lake={s:0,a:3};
+function renderLake(){
+  const tr=trans(lake.s,lake.a),probs={};
+  tr.forEach(x=>probs[x.s2]=x.p.toFixed(1));
+  $('#g-lake').innerHTML=gridHTML({cell:100,sel:lake.s,probs,click:true});
+  document.querySelectorAll('#s-lake .act').forEach(b=>b.classList.toggle('on',+b.dataset.do.split(':')[1]===lake.a));
+  const parts=tr.sort((a,b)=>b.p-a.p).map(x=>`s_{${x.s2}}:\\ ${x.p.toFixed(1)}`).join(',\\qquad ');
+  const el=$('#lake-out');
+  el.innerHTML=`\\[P(\\,\\cdot\\mid s_{${lake.s}},${ATEX[lake.a]}\\,):\\qquad ${parts}\\]`;
+  typeset(el);
+}
+S['s-lake']=renderLake;
+$('#g-lake').addEventListener('click',e=>{const c=e.target.closest('.cell');if(!c)return;const s=+c.dataset.s;if(isTerm(s))return;lake.s=s;renderLake();});
+
+let piK=0;
+S['s-pi']=()=>{
+  const h=PIH[piK],last=piK===PIH.length-1;
+  $('#g-pi').innerHTML=gridHTML({cell:96,policy:h.pi,values:h.V});
+  $('#pi-lab').innerHTML=`\\(k=${piK}\\)`;
+  let t=piK===0?`Start: \\(\\pi_0\\) always goes \\(\\leftarrow\\).<br>`:'';
+  t+=`Grid shows \\(\\pi_{${piK}}\\) and \\(V^{\\pi_{${piK}}}\\).<br>`;
+  t+=last?`Improvement changes nothing: \\(\\pi_{${piK}}=\\pi^*\\).`:`Improvement will change ${h.changed} action${h.changed>1?'s':''}.`;
+  $('#pi-out').innerHTML=t;
+  typeset($('#pi-lab'));typeset($('#pi-out'));
+};
+S['s-opt']=()=>{
+  $('#g-opt').innerHTML=gridHTML({cell:104,policy:OPT.pi,values:OPT.V});
+  const el=$('#opt-out');
+  el.innerHTML=`Converged after ${PIH.length-1} improvement steps.<br>Value of the start state: \\(V^*(s_0)=${ft(OPT.V[0])}\\)`;
+  typeset(el);
+};
+S['s-fresh']=()=>{$('#g-fresh').innerHTML=gridHTML({cell:100,policy:PI,q:true});};
+
+function epSlide(key,gid,tid,oid){
+  const ep=EP[key],tbl=$(tid),out=$(oid);
+  tbl.innerHTML=trajTable(ep,['t','s','a','r']);typeset(tbl);
+  out.innerHTML='Walking…';
+  play({ep,gridEl:$(gid),gopt:{cell:88,policy:PI},tbl,onDone:()=>{out.innerHTML=endText(ep);typeset(out);}});
+}
+S['s-ep1']=()=>epSlide('fv1','#g-ep1','#tb-ep1','#out-ep1');
+S['s-ep2']=()=>epSlide('fv2','#g-ep2','#tb-ep2','#out-ep2');
+
+S['s-est']=()=>{
+  const ep=EP.fv1,T=ep.length,G=returnsOf(ep),m=new MC('first');m.update(ep);
+  $('#g-est').innerHTML=gridHTML({cell:88,values:m.V,counts:m.N});
+  const tbl=$('#tb-est');tbl.innerHTML=trajTable(ep,['t','s','r','g','first']);reveal(tbl,T,true);typeset(tbl);
+  let w=`\\[G_{${T-1}}=R_{${T}}+\\gamma\\,G_{${T}}=${ft(ep[T-1].r,0)}\\]`;
+  if(T>=2)w+=`\\[G_{${T-2}}=R_{${T-1}}+\\gamma\\,G_{${T-1}}=${ft(ep[T-2].r,0)}+0.9\\,${tp(G[T-1])}=${ft(G[T-2])}\\]`;
+  const el=$('#w-est');el.innerHTML=w;typeset(el);
+};
+
+S['s-upd']=()=>{
+  const m=new MC('first');m.update(EP.fv1);const log=m.update(EP.fv2);
+  $('#g-upd').innerHTML=gridHTML({cell:96,values:m.V,counts:m.N});
+  let h='<table class="tt"><tr><th>\\(t\\)</th><th>\\(S_t\\)</th><th>\\(N(s)\\)</th><th>old \\(V(s)\\)</th><th>\\(G_t\\)</th><th>new \\(V(s)\\)</th></tr>';
+  log.forEach(e=>{
+    if(e.skip)h+=`<tr class="skip"><td>${e.t}</td><td>${sH(e.s)}</td><td colspan="4">repeat visit, ignored</td></tr>`;
+    else h+=`<tr><td>${e.t}</td><td>${sH(e.s)}</td><td>${e.oN} → ${e.nN}</td><td>${f(e.oV)}</td><td>${f(e.G)}</td><td class="hl">${f(e.nV)}</td></tr>`;
+  });
+  const tbl=$('#tb-upd');tbl.innerHTML=h+'</table>';typeset(tbl);
+  const e=log[0];
+  const el=$('#w-upd');
+  el.innerHTML=`\\[V(s_{${e.s}})\\leftarrow ${ft(e.oV)}+\\frac{1}{${e.nN}}\\big(${ft(e.G)}-${tp(e.oV)}\\big)=${ft(e.nV)}\\]`;
+  typeset(el);
+};
+
+const TRACK=[0,3,14];
+S['s-many']=()=>{
+  ensureFV();
+  $('#g-many').innerHTML=gridHTML({cell:96,values:fv.V,counts:fv.N});
+  $('#n-many').textContent=fv.n.toLocaleString();
+  drawChart($('#c-many'),{w:860,h:430,series:TRACK.map((s,i)=>({data:fv.hist.map(V=>V[s]),color:`--c${i+1}`}))});
+  $('#l-many').innerHTML=legend(TRACK.map((s,i)=>[`--c${i+1}`,`V(${sH(s)})`]));
+};
+
+function renderCompare(p,mc){
+  const err=mc.V.map((v,s)=>Math.abs(v-VPI[s]));
+  const base={cell:60,idx:false,start:false,dec:2,vbig:true};
+  $(`#gt-${p}`).innerHTML=gridHTML({...base,values:VPI});
+  $(`#ge-${p}`).innerHTML=gridHTML({...base,values:mc.V,counts:mc.N,nlabel:false});
+  $(`#gx-${p}`).innerHTML=gridHTML({...base,values:err,counts:mc.N,nlabel:false,mode:'err'});
+  let c=0,mx=0;for(let s=0;s<25;s++)if(!isTerm(s)&&mc.N[s]>0){c++;mx=Math.max(mx,err[s]);}
+  $(`#st-${p}`).innerHTML=stat('Episodes',mc.n.toLocaleString())+stat('States seen',`${c} / ${NONTERM}`)+stat('RMSE',f(mc.err[mc.err.length-1]||0))+stat('Largest error',f(mx))+stat(`V(${sH(0)}) / V<sup>π</sup>(${sH(0)})`,`${f(mc.V[0])} / ${f(VPI[0])}`);
+  drawChart($(`#c-${p}`),{w:1016,h:220,logx:true,ymin:0,series:[{data:mc.err,color:'--c1'}]});
+}
+S['s-cmp']=()=>{ensureFV();renderCompare('fv',fv);};
+
+S['s-ev1']=()=>{
+  const ep=EP.ev1,T=ep.length,G=returnsOf(ep),m=new MC('every');m.update(ep);
+  const tbl=$('#tb-ev1');tbl.innerHTML=trajTable(ep,['t','s','a','r','g','visit']);typeset(tbl);
+  const w=$('#w-ev1');w.innerHTML='<p class="sm muted">Returns are known only once the episode ends…</p>';
+  play({ep,gridEl:$('#g-ev1'),gopt:{cell:88,policy:PI},tbl,onDone:()=>{
+    reveal(tbl,T,true);
+    $('#g-ev1').innerHTML=gridHTML({cell:88,values:m.V,counts:m.N});
+    const idx={};ep.forEach((x,t)=>(idx[x.s]=idx[x.s]||[]).push(t));
+    let best=ep[0].s;for(const s in idx)if(idx[s].length>idx[best].length)best=+s;
+    const ts=idx[best],n=ts.length;
+    let tex;
+    if(n<=3)tex=`\\[V(s_{${best}})=\\frac{${ts.map(t=>`G_{${t}}`).join('+')}}{${n}}=\\frac{${ts.map(t=>ft(G[t])).join('+').replace(/\+-/g,'-')}}{${n}}=${ft(m.V[best])}\\]`;
+    else tex=`\\[V(s_{${best}})=\\frac{1}{${n}}\\sum_{t\\,:\\,S_t=s_{${best}}}G_t=${ft(m.V[best])}\\]`;
+    if(n>1)tex+=`<p class="sm muted">First visit would have used only \\(G_{${ts[0]}}=${ft(G[ts[0]])}\\).</p>`;
+    w.innerHTML=tex;typeset(w);
+  }});
+};
+
+S['s-ev2']=()=>{
+  const m=new MC('every');m.update(EP.ev1);const V0=m.V.slice(),N0=m.N.slice();
+  const ep=EP.ev2,T=ep.length,log=m.update(ep),cnt={};
+  ep.forEach(x=>cnt[x.s]=(cnt[x.s]||0)+1);
+  let h='<table class="tt"><tr><th>\\(t\\)</th><th>\\(S_t\\)</th><th>\\(N(s)\\)</th><th>old \\(V(s)\\)</th><th>\\(G_t\\)</th><th>new \\(V(s)\\)</th></tr>';
+  log.forEach(e=>{
+    h+=`<tr data-t="${e.t}" data-k="row" class="${cnt[e.s]>1?'rpt':''}"><td>${e.t}</td><td>${sH(e.s)}</td>`+
+      `<td data-t="${e.t}" data-k="late">${e.oN} → ${e.nN}</td><td data-t="${e.t}" data-k="late">${f(e.oV)}</td><td data-t="${e.t}" data-k="late">${f(e.G)}</td><td data-t="${e.t}" data-k="late" class="hl">${f(e.nV)}</td></tr>`;
+  });
+  const tbl=$('#tb-ev2');tbl.innerHTML=h+'</table>';typeset(tbl);
+  const out=$('#out-ev2');out.innerHTML='Walking… Monte Carlo must wait for the episode to end to know each \\(G_t\\).';typeset(out);
+  play({ep,gridEl:$('#g-ev2'),gopt:{cell:96,values:V0,counts:N0},tbl,onDone:()=>{
+    reveal(tbl,T,true);
+    $('#g-ev2').innerHTML=gridHTML({cell:96,values:m.V,counts:m.N});
+    const rep=Object.keys(cnt).filter(s=>cnt[s]>1).map(Number);
+    out.innerHTML=endText(ep)+(rep.length?`<br>Shaded rows: ${rep.map(s=>`\\(s_{${s}}\\)`).join(', ')} visited more than once, so updated more than once.`:'');
+    typeset(out);
+  }});
+};
+
+S['s-evcmp']=()=>{ensureEV();renderCompare('ev',ev);};
+
+let h2h=null;
+function runH2H(){const a=new MC('first'),b=new MC('every');for(let i=0;i<2000;i++){const ep=genEpisode(PI);a.update(ep);b.update(ep);}h2h={a,b};}
+S['s-h2h']=()=>{
+  if(!h2h)runH2H();
+  drawChart($('#c-h2h'),{w:860,h:470,logx:true,ymin:0,series:[{data:h2h.a.err,color:'--c1'},{data:h2h.b.err,color:'--c2'}]});
+  $('#l-h2h').innerHTML=legend([['--c1','first visit'],['--c2','every visit']])+'<span>RMSE vs episodes (log scale)</span>';
+  const e=(m,k)=>f(m.err[Math.min(k,m.err.length)-1]);
+  $('#st-h2h').innerHTML=stat('RMSE after 10 episodes',`${e(h2h.a,10)} / ${e(h2h.b,10)}`)+stat('after 100',`${e(h2h.a,100)} / ${e(h2h.b,100)}`)+stat('after 2,000',`${e(h2h.a,2000)} / ${e(h2h.b,2000)}`)+'<span class="xs">first / every</span><span></span>';
+};
+
+/* ---------- actions ---------- */
+const ACT={
+  lakeA:a=>{lake.a=+a;renderLake();},
+  pi:a=>{piK=a==='first'?0:a==='last'?PIH.length-1:a==='prev'?Math.max(0,piK-1):Math.min(PIH.length-1,piK+1);S['s-pi']();},
+  replay:()=>enter(),
+  newep:k=>{EP[k]=PICK[k]();if(k.startsWith('fv'))fvKey++;else evKey++;enter();},
+  addfv:k=>{ensureFV();runEpisodes(fv,+k);enter();},
+  resetfv:()=>{fvKey++;enter();},
+  addev:k=>{ensureEV();runEpisodes(ev,+k);enter();},
+  resetev:()=>{evKey++;enter();},
+  h2h:()=>{runH2H();enter();}
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-do]');if(!b)return;const [a,arg]=b.dataset.do.split(':');ACT[a]&&ACT[a](arg);});
+
+/* ---------- navigation ---------- */
+const slides=[...document.querySelectorAll('.slide')];let cur=0;
+function enter(){tok++;const fn=S[slides[cur].id];fn&&fn();}
+function go(i){
+  i=Math.max(0,Math.min(slides.length-1,i));
+  slides[cur].classList.remove('active');cur=i;slides[cur].classList.add('active');
+  enter();
+  $('#cnt').textContent=`${cur+1} / ${slides.length}`;
+  $('#barfill').style.width=((cur+1)/slides.length*100)+'%';
+  try{history.replaceState(null,'','#'+(cur+1));}catch(e){}
+}
+$('#prev').onclick=()=>go(cur-1);$('#next').onclick=()=>go(cur+1);
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','PageDown'].includes(e.key)){e.preventDefault();go(cur+1);}
+  if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();go(cur-1);}
+  if(e.key==='Home')go(0);if(e.key==='End')go(slides.length-1);
+});
+let tx=null;
+document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
+document.addEventListener('touchend',e=>{if(tx==null)return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>70)go(cur+(dx<0?1:-1));tx=null;});
+function fit(){const vp=$('#vp'),k=Math.min(vp.clientWidth/1600,vp.clientHeight/900);$('#stage').style.transform=`translate(-50%,-50%) scale(${k})`;}
+window.addEventListener('resize',fit);fit();
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>enter());}catch(e){}
+const h0=parseInt((location.hash||'').slice(1),10);
+slides[0].classList.add('active');
+go(isNaN(h0)?0:h0-1);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+</body>
+</html>
